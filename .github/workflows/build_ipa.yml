@@ -26,6 +26,14 @@ jobs:
           sed -i '' 's/objectVersion = 77/objectVersion = 56/' dirtyZero.xcodeproj/project.pbxproj
           sed -i '' 's/preferredProjectObjectVersion = 77/preferredProjectObjectVersion = 56/' dirtyZero.xcodeproj/project.pbxproj
 
+      - name: Additional Project Format Fixes
+        run: |
+          plutil -convert xml1 dirtyZero.xcodeproj/project.pbxproj
+
+      - name: Prepare C File
+        run: |
+          xcodebuild -project dirtyZero.xcodeproj -target dirtyZero -showBuildSettings
+
       - name: Archive Build (Unsigned)
         run: |
           xcodebuild clean archive \
@@ -44,10 +52,7 @@ jobs:
 
       - name: Create IPA from Archive
         run: |
-          # Copy the .app from the archive
           cp -R build/dirtyZero.xcarchive/Products/Applications/dirtyZero.app .
-
-          # Package the app into an IPA
           mkdir -p Payload
           cp -R dirtyZero.app Payload/
           zip -r dirtyZero.ipa Payload
@@ -58,4 +63,4 @@ jobs:
         with:
           name: dirtyZero.ipa
           path: dirtyZero.ipa
-          retention-days: 90 
+          retention-days: 90

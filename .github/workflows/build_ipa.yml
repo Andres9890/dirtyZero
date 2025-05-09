@@ -40,7 +40,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_OPTIMIZATION_LEVEL="-Onone" \
-            IPHONEOS_DEPLOYMENT_TARGET=12.0
+            IPHONEOS_DEPLOYMENT_TARGET=13.0
 
       - name: Create IPA from Archive
         run: |

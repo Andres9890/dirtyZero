@@ -4,7 +4,7 @@
 //
 //  Created by Skadz on 5/8/25.
 //
-// modfied by Andres99 on 5/10/25.
+// modfied by Andres99 on 5/11/25.
 
 import SwiftUI
 import DeviceKit
@@ -52,6 +52,9 @@ var tweaks: [ZeroTweak] = [
 struct ContentView: View {
     let device = Device.current
     @AppStorage("enabledTweaks") private var enabledTweakIds: [String] = []
+    @State private var makePermanent: Bool = false
+    @State private var showingPermanentWarning: Bool = false
+    
     private var enabledTweaks: [ZeroTweak] {
         tweaks.filter { tweak in enabledTweakIds.contains(tweak.id) }
     }
@@ -87,7 +90,7 @@ struct ContentView: View {
         
         for (index, path) in paths.enumerated() {
             print("[\(index + 1)/\(paths.count)] Zeroing: \(path)")
-            dirtyZeroHide(path: path)
+            dirtyZeroHide(path: path, permanent: makePermanent)
         }
         
         print("[*] Successfully zeroed out all \(paths.count) paths!")
@@ -149,35 +152,52 @@ struct ContentView: View {
                     }
                     
                     Section(header: HStack {
-                        Image(systemName: "gear")
-                        Text("Actions")
-                    }, footer: Text("All tweaks are done in memory, so if something goes wrong, you can force reboot to revert changes.\n\nExploit discovered by Ian Beer of Google Project Zero. Created by the jailbreak.party team.")) {
-                        Button(action: {
-                            var applyingString = "[*] Applying the selected tweaks: "
-                            let tweakNames = enabledTweaks.map { $0.name }.joined(separator: ", ")
-                            applyingString += tweakNames
-                            
-                            print(applyingString)
-                            
-                            for tweak in enabledTweaks {
-                                for path in tweak.paths {
-                                    dirtyZeroHide(path: path)
-                                }
-                            }
-                            
-                            print("[*] All tweaks applied successfully!")
-                        }) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("Options")
+                    }) {
+                        Toggle(isOn: $makePermanent) {
                             HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                Text("Apply")
+                                Image(systemName: "exclamationmark.shield.fill")
+                                    .foregroundColor(.red)
+                                Text("Make Changes Permanent (DANGEROUS)")
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.red)
                             }
                         }
-                        .buttonStyle(TintedButton(color: enabledTweaks.isEmpty ? .accent.dark() : .accent, fullWidth: true))
+                        .onChange(of: makePermanent) { newValue in
+                            if newValue {
+                                showingPermanentWarning = true
+                            }
+                        }
+                    }
+                    
+                    Section(header: HStack {
+                        Image(systemName: "gear")
+                        Text("Actions")
+                    }, footer: Text(makePermanent ? 
+                        "⚠️ WARNING: Permanent changes cannot be reverted by reboot. This may cause system instability or bootloops. Use at your own risk!\n\nExploit discovered by Ian Beer of Google Project Zero. Created by the jailbreak.party team." :
+                        "All tweaks are done in memory, so if something goes wrong, you can force reboot to revert changes.\n\nExploit discovered by Ian Beer of Google Project Zero. Created by the jailbreak.party team, modifed by Andres99."
+                    )) {
+                        Button(action: {
+                            if makePermanent {
+                                showingPermanentWarning = true
+                            } else {
+                                applyChanges()
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: makePermanent ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                    .foregroundColor(makePermanent ? .red : .primary)
+                                Text(makePermanent ? "Apply Permanently" : "Apply")
+                            }
+                        }
+                        .buttonStyle(TintedButton(color: enabledTweaks.isEmpty ? .accent.dark() : (makePermanent ? .red : .accent), fullWidth: true))
                         .contextMenu {
                             Button {
                                 Alertinator.shared.prompt(title: "Enter custom path", placeholder: "/path/to/the/file/to/hide") { path in
                                     if let _ = path, !path!.isEmpty {
-                                        dirtyZeroHide(path: path!)
+                                        dirtyZeroHide(path: path!, permanent: makePermanent)
                                     } else {
                                         Alertinator.shared.alert(title: "Invalid path", body: "Enter an actual path to what you want to hide/zero.")
                                     }
@@ -249,15 +269,73 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("dirtyZero")
+            .alert("PERMANENT CHANGES WARNING", isPresented: $showingPermanentWarning) {
+                Button("Cancel", role: .cancel) {
+                    makePermanent = false
+                }
+                Button("I Understand the Risks", role: .destructive) {
+                    if makePermanent {
+                        applyChanges()
+                    }
+                }
+            } message: {
+                Text("""
+                ⚠️ DANGER: Making changes permanent will directly modify system files on disk. These changes:
+                
+                • Cannot be reverted by rebooting
+                • May cause system instability
+                • Could result in bootloops
+                • May require a full device restore to fix
+                
+                Only proceed if you fully understand the risks and have a backup of your device.
+                """)
+            }
         }
     }
     
-    func dirtyZeroHide(path: String) {
+    private func applyChanges() {
+        var applyingString = "[*] Applying the selected tweaks"
+        if makePermanent {
+            applyingString += " PERMANENTLY"
+        }
+        applyingString += ": "
+        let tweakNames = enabledTweaks.map { $0.name }.joined(separator: ", ")
+        applyingString += tweakNames
+        
+        print(applyingString)
+        
+        for tweak in enabledTweaks {
+            for path in tweak.paths {
+                dirtyZeroHide(path: path, permanent: makePermanent)
+            }
+        }
+        
+        print("[*] All tweaks applied successfully!")
+    }
+    
+    func dirtyZeroHide(path: String, permanent: Bool = false) {
+    if permanent {
+        print("[!] Making permanent changes to: \(path)")
+        
+        do {
+            let fileHandle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
+            let zeroData = Data(count: 0x8000)
+            fileHandle.write(zeroData)
+            fileHandle.closeFile()
+            print("[!] File permanently zeroed: \(path)")
+        } catch {
+            print("[!] Failed to make permanent changes to file \(path): \(error)")
+            let args = ["permasign", path]
+            var argv = args.map { strdup($0) }
+            _ = permasign(Int32(args.count), &argv)
+        }
+    } else {
         let args = ["permasign", path]
         var argv = args.map { strdup($0) }
         
         _ = permasign(Int32(args.count), &argv)
     }
+  }
 }
 
 // i skidded this stuff from cowabunga, sorry lemin.
